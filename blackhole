@@ -10,7 +10,7 @@
 EXENAME="blackhole"
 
 HOSTSFILE="/etc/hosts"
-BLACKLIST="/etc/blackhole.conf"
+BLACKLIST="/usr/local/etc/blackhole.conf"
 
 BLACKLIST_COMMENT="# Domain blacklist for blackhole CLI"
 
