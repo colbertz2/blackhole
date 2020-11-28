@@ -8,6 +8,16 @@ Domains are stored in a separate _blacklist_ and inserted into the hosts file wh
 
 Domains can be added to or removed from the blacklist at any time. The hosts file is synchronized with the blacklist when the black hole is enabled. The `clear` command clears all domains from the blacklist. If the blackhole is enabled, domains are also cleared from the hosts file.
 
+## install
+```shell
+sudo sh -c "$(curl -fsSL https://raw.githubusercontent.com/colbertz2/blackhole/main/install.sh)"
+```
+
+## uninstall
+```shell
+sudo sh -c "$(curl -fsSL https://raw.githubusercontent.com/colbertz2/blackhole/main/uninstall.sh)"
+```
+
 ## usage
 ```
 blackhole list              Prints the current blacklist
