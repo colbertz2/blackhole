@@ -1,0 +1,81 @@
+.\" Manpage for blackhole
+.\" Contact zach.colbert20@gmail.com with corrections.
+.TH BLACKHOLE 8
+.SH NAME
+blackhole \- locally blackhole domains using /etc/hosts
+.SH SYNOPSIS
+blackhole COMMAND [args]
+.SH DESCRIPTION
+blackhole is a simple utility for making changes to the system hosts file.
+It blackholes domain names by setting them as loopback interfaces.
+Most features of this command must be run as the root user.
+
+Domains are stored in a separate "blacklist" and inserted into the hosts file when the blackhole is enabled.
+While the blackhole is enabled, blacklisted domains cannot be resolved by local programs (like your browser).
+The blackhole can be enabled with the "on" command and disabled with the "off" command.
+
+Domains can be added to or removed from the blacklist at any time.
+The hosts file is synchronized with the blacklist when the black hole is enabled.
+The "clear" command clears all domains from the blacklist.
+If the blackhole is enabled, domains are also cleared from the hosts file.
+.SH COMMANDS
+.TP
+.BR list
+Prints the current blacklist.
+.TP
+.BR add \ \fIdomain\fR
+Adds \fIdomain\fR to the blacklist.
+.TP
+.BR rm \ \fIdomain\fR
+Removes \fIdomain\fR from the blacklist. (Exact matches only)
+.TP
+.BR clear
+Clears all entries from the blacklist.
+.TP
+.BR on
+Enables the blackhole, inserting blacklist entries into the host file.
+.TP
+.BR off 
+Disables the blackhole, removing blacklist entries from the hosts file.
+Does not alter entries in the blacklist.
+.TP
+.BR help
+Prints usage information.
+.SH EXIT STATUS
+Exit value 0 indicates success.
+
+Exit value 1 indicates usage error.
+
+Exit value 2 indicates file I/O or permissions error.
+.SH FILES
+Blacklist is stored at /etc/blackhole.conf
+.SH EXAMPLE
+Start by adding a domain to the blacklist:
+.PP
+.nf
+.RS
+$ blackhole add facebook.com
+.RE
+.fi
+.PP
+Use the "list" command to see that it has been added to the blacklist:
+.PP
+.nf
+.RS
+$ blackhole list
+  facebook.com
+.RE
+.fi
+.PP
+Enable the blackhole to block the blacklisted domain:
+.PP
+.nf
+.RS
+$ blackhole on
+.RE
+.fi
+.PP
+.SH AUTHOR
+Written by Zach Colbert - zach.colbert20@gmail.com
+.SH COPYRIGHT
+Copyright (c) 2020 Zach Colbert. See LICENSE.txt

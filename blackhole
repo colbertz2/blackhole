@@ -1,0 +1,369 @@
+#!/bin/bash
+
+# blackhole
+#
+# quickly blackholes a user-defined list of sites
+#
+# author: Zach Colbert <zach.colbert20@gmail.com>
+# start date: 27 Nov 2020
+
+EXENAME="blackhole"
+
+HOSTSFILE="/etc/hosts"
+BLACKLIST="/etc/blackhole.conf"
+
+BLACKLIST_COMMENT="# Domain blacklist for blackhole CLI"
+
+BLACKHOLE_START="## blackhole start ##"
+BLACKHOLE_END="## blackhole end ##"
+
+# SUB COMMANDS
+#
+# list      list domains on the blacklist
+# add       add domain to the blacklist
+# rm        remove domain from the blacklist
+# clear     clear all entries from the blacklist
+# on        enable blackhole
+# off       disable blackhole
+# help      print help text
+
+# returns 0 if blackhole is enabled, 1 if disabled
+# returns 2 on i/o error
+__isenabled() {
+    if [ ! -r $HOSTSFILE ]; then
+        echo "$EXENAME: unable to read hosts file" >&2
+        exit 2
+    fi
+
+    grep -x "$BLACKHOLE_START" $HOSTSFILE >/dev/null
+    return $?
+}
+
+# updates blacklist in hosts file to match blacklist file
+__update() {
+    __isenabled
+    case $? in
+    2)
+        # file error
+        return 2
+        ;;
+    1)
+        # blackhole disabled, soft fail
+        return 0
+        ;;
+    0)
+        # blackhole enabled, do the thing
+        :
+        ;;
+    esac
+
+    if [ ! -r $BLACKLIST ]; then
+        echo "$EXENAME: unable to read blacklist" >&2
+        return 2
+    fi
+
+    if [ ! -w $HOSTSFILE ]; then
+        echo "$EXENAME: unable to write to hosts file" >&2
+        return 2
+    fi
+
+    # prep temp files
+    tmphosts=".$EXENAME-hosts.$$.tmp"
+    tmplists=".$EXENAME-list.$$.tmp"
+    trap "rm -f $tmphosts $tmplists" SIGINT
+
+    # read hosts file sans blacklist into temp file
+    sed --posix "/$BLACKHOLE_START/,/$BLACKHOLE_END/d" $HOSTSFILE > $tmphosts
+    
+    # append to temp file
+    printf "%s\n" "$BLACKHOLE_START" >> $tmphosts
+    tail -n+2 $BLACKLIST >> $tmplists
+    while read line; do
+        echo "0.0.0.0    $line" >> $tmphosts
+    done <$tmplists
+    printf "%s\n" "$BLACKHOLE_END" >> $tmphosts
+    head -c -1 $tmphosts > $HOSTSFILE
+    rm -f $tmphosts $tmplists
+
+    # flush dns cache on macos
+    un=$(uname -s)
+    if [ $un = "Darwin" ]; then
+        dscacheutil -flushcache
+        killall -HUP mDNSResponder
+    fi
+
+    return 0
+}
+
+# list domains on the blacklist
+_list() {
+    if [ ! -r $BLACKLIST ]; then
+        echo "$EXENAME: unable to read blacklist (permission denied)" >&2
+        return 2
+    fi
+
+    grep -vx "$BLACKLIST_COMMENT" $BLACKLIST
+    return 0
+}
+
+# add domain to the blacklist
+_add() {
+    # require argument
+    if [ $# -lt 2 ]; then
+        usage
+        return 1
+    fi
+
+    # require run as root
+    if [ $EUID -ne 0 ]; then
+        sudo $0 "$@"
+        return $?
+    fi
+
+    if [ ! -r $BLACKLIST ]; then
+        echo "$EXENAME: unable to read blacklist (permission denied)" >&2
+        return 2
+    fi
+
+    if [ ! -w $BLACKLIST ]; then
+        echo "$EXENAME: unable to write to blacklist (permission denied)" >&2
+        return 2
+    fi
+
+    # stop if host is already in blacklist
+    grep -x "$2" $BLACKLIST >/dev/null
+    if [ $? -eq 0 ]; then
+        echo "$EXENAME: $2 is already in the blacklist" >&2
+        return 0
+    fi
+
+    # append host to blacklist
+    echo "$2" >> $BLACKLIST
+    if [ $? -ne 0 ]; then
+        echo "$EXENAME: unable to write to blacklist" >&2
+        return 2
+    fi
+
+    # update hosts file
+    __update $@
+    return $?
+}
+
+# remove domain from the blacklist
+_rm() {
+    # require argument
+    if [ $# -lt 2 ]; then
+        usage
+        return 1
+    fi
+
+    # require run as root
+    if [ $EUID -ne 0 ]; then
+        sudo $0 "$@"
+        return $?
+    fi
+
+    if [ ! -r $BLACKLIST ]; then
+        echo "$EXENAME: unable to read blacklist" >&2
+        return 2
+    fi
+
+    if [ ! -w $BLACKLIST ]; then
+        echo "$EXENAME: unable to write to blacklist" >&2
+        return 2
+    fi
+
+    # stop if host is already not in blacklist
+    grep -x "$2" $BLACKLIST >/dev/null
+    if [ $? -ne 0 ]; then
+        return 0
+    fi
+
+    # remove matching lines from blacklist
+    tmpfile=".$EXENAME-rm.$$.tmp"
+    trap "rm -f $tmpfile" SIGINT
+    grep -v $2 $BLACKLIST > $tmpfile
+    cat $tmpfile > $BLACKLIST
+    rm -f $tmpfile
+
+    # update hosts file
+    __update $@
+    return $?
+}
+
+# clear all entries from the blacklist
+_clear() {
+    # require run as root
+    if [ $EUID -ne 0 ]; then
+        sudo $0 "$@"
+        return $?
+    fi
+
+    if [ ! -r $BLACKLIST ]; then
+        echo "$EXENAME: unable to read blacklist" >&2
+        return 2
+    fi
+
+    if [ ! -w $BLACKLIST ]; then
+        echo "$EXENAME: unable to write to blacklist" >&2
+        return 2
+    fi
+
+    # confirm change
+    printf "Really clear all entries from the blacklist? [y/N]: "
+    read resp
+
+    if [ "$resp" = "y" ] || [ "$resp" = "Y" ]; then
+        # do the thing
+        echo $BLACKLIST_COMMENT > $BLACKLIST
+
+        # update hosts file
+        __update $@
+        return $?
+    fi
+
+    # don't do the thing
+    return 1
+}
+
+# enable blackhole
+_on() {
+    # require run as root
+    if [ $EUID -ne 0 ]; then
+        sudo $0 "$@"
+        return $?
+    fi
+
+    __isenabled
+    if [ $? -eq 0 ]; then
+        # stop, black hole is already enabled
+        return 0
+    fi
+
+    if [ ! -r $BLACKLIST ]; then
+        echo "$EXENAME: unable to read blacklist: $BLACKLIST" >&2
+        return 10
+    fi
+
+    if [ ! -w $HOSTSFILE ]; then
+        echo "$EXENAME: unable to write to hosts file" >&2
+        return 2
+    fi
+
+    tmpfile=".$EXENAME-list.$$.tmp"
+    trap "rm -f $tmpfile" SIGINT
+
+    # append to hosts file
+    printf "\n%s\n" "$BLACKHOLE_START" >> $HOSTSFILE
+    tail -n+2 $BLACKLIST >> $tmpfile
+    while read line; do
+        echo "0.0.0.0    $line" >> $HOSTSFILE
+    done <$tmpfile
+    rm -f $tmpfile
+    printf "%s\n" "$BLACKHOLE_END" >> $HOSTSFILE
+
+    return 0
+}
+
+# disable blackhole
+_off() {
+    # require run as root
+    if [ $EUID -ne 0 ]; then
+        sudo $0 "$@"
+        return $?
+    fi
+
+    __isenabled
+    if [ $? -eq 1 ]; then
+        # stop, black hole is already disabled
+        return 0
+    fi
+
+    if [ ! -w $HOSTSFILE ]; then
+        echo "$EXENAME: unable to write to hosts file" >&2
+        return 2
+    fi
+
+    # remove blackhole section from hosts file
+    tmpfile=".$EXENAME-hosts.$$.tmp"
+    trap "rm -f $tmpfile" SIGINT
+    sed --posix "/$BLACKHOLE_START/,/$BLACKHOLE_END/d" $HOSTSFILE > $tmpfile
+    head -c -1 $tmpfile > $HOSTSFILE
+    rm -f $tmpfile
+
+    return 0
+}
+
+# print help text
+_help() {
+    usage
+    return 0
+}
+
+
+# print usage info
+# does not exit!
+usage() {
+    >&2 printf "usage:\n"
+    >&2 printf "\t%s %s\n" $EXENAME "list"
+    >&2 printf "\t%s %s\n" $EXENAME "add <domain>"
+    >&2 printf "\t%s %s\n" $EXENAME "rm <domain>"
+    >&2 printf "\t%s %s\n" $EXENAME "clear"
+    >&2 printf "\t%s %s\n" $EXENAME "on"
+    >&2 printf "\t%s %s\n" $EXENAME "off"
+    >&2 printf "\t%s %s\n" $EXENAME "help"
+    >&2 printf "\nFor more information, see 'man blackhole'.\n"
+}
+
+
+# main routine parses subcommand and args
+main() {
+    ret=-5
+
+    # require a subcommand
+    if [ $# -lt 1 ]; then
+        usage
+        return 1
+    fi
+
+    case $1 in
+    "list")
+        _list
+        ret=$?
+        ;;
+    "add")
+        _add $@
+        ret=$?
+        ;;
+    "rm")
+        _rm $@
+        ret=$?
+        ;;
+    "clear")
+        _clear $@
+        ret=$?
+        ;;
+    "on")
+        _on $@
+        ret=$?
+        ;;
+    "off")
+        _off $@
+        ret=$?
+        ;;
+    "help")
+        _help
+        ret=$?
+        ;;
+    *)
+        echo "$EXENAME: $1 is not a command"
+        usage
+        return 1
+        ;;
+    esac
+
+    return $ret
+}
+
+main $@
+exit $?
