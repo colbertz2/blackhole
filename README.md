@@ -32,13 +32,13 @@ blackhole help              Prints usage info
 ## example
 Start by adding a domain to the blacklist:
 ```shell
-$ blackhole add facebook.com
+$ blackhole add www.facebook.com
 ```
 
 Use the `list` command to see that it has been added to the blacklist:
 ```shell
 $ blackhole list
-facebook.com
+www.facebook.com
 ```
 
 Enable the blackhole to block the blacklisted domain:
