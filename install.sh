@@ -26,12 +26,15 @@ curl -o README.md "https://raw.githubusercontent.com/colbertz2/blackhole/main/RE
 curl -o LICENSE.txt "https://raw.githubusercontent.com/colbertz2/blackhole/main/LICENSE.txt"
 
 # Install files
-mv blackhole $SCRIPT_DEST
-mv blackhole.1.gz $MAN_DEST
-mv README.md $README_DEST
-mv LICENSE.txt $LICENSE_DEST
+install blackhole $SCRIPT_DEST
+cp blackhole.1.gz $MAN_DEST
+cp README.md $README_DEST
+cp LICENSE.txt $LICENSE_DEST
 
 # Create empty conf file
 echo "# Domain blacklist for blackhole CLI" > $CONF_FILE
+
+# Clean up
+rm -f blackhole blackhole.1.gz README.md LICENSE.txt
 
 exit 0
